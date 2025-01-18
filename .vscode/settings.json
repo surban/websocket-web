@@ -1,0 +1,7 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "Cargo.toml",
+        //"test-server/Cargo.toml"
+    ],
+    "rust-analyzer.cargo.target": "wasm32-unknown-unknown"
+}
