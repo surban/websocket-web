@@ -1,26 +1,27 @@
-//! WebSocketStream
+//! WebSocket streams API.
 
-use futures::prelude::*;
+use futures_core::Stream;
+use futures_sink::Sink;
+use futures_util::FutureExt;
 use js_sys::{Array, Object, Promise, Reflect, Uint8Array};
+use std::{
+    cell::Cell,
+    io,
+    io::ErrorKind,
+    ops::Deref,
+    pin::Pin,
+    rc::Rc,
+    task::{ready, Context, Poll},
+};
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::{spawn_local, JsFuture};
+use wasm_bindgen_futures::JsFuture;
 use web_sys::{ReadableStream, ReadableStreamDefaultReader, WritableStream, WritableStreamDefaultWriter};
 
-use core::fmt;
-use std::io;
-use std::io::Error;
-use std::io::ErrorKind;
-use std::ops::Deref;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::task::{ready, Context, Poll};
-
-use crate::closed::Closed;
-use crate::{CloseCode, ClosedReason, Info, Interface, Msg, WebSocketBuilder};
-
-#[cfg(test)]
-mod tests;
+use crate::{
+    closed::{CloseCode, Closed, ClosedReason},
+    util::{js_err, js_err_msg},
+    Info, Interface, Msg, WebSocketBuilder,
+};
 
 #[wasm_bindgen]
 extern "C" {
@@ -35,8 +36,8 @@ extern "C" {
     #[wasm_bindgen(method, getter)]
     fn closed(this: &WebSocketStream) -> Promise;
 
-    #[wasm_bindgen(method)]
-    fn close(this: &WebSocketStream, options: &JsValue);
+    #[wasm_bindgen(method, catch)]
+    fn close(this: &WebSocketStream, options: &JsValue) -> Result<(), JsValue>;
 
     #[wasm_bindgen(method, getter)]
     fn url(this: &WebSocketStream) -> String;
@@ -72,12 +73,12 @@ extern "C" {
 
 struct Guard {
     socket: WebSocketStream,
-    closed: bool,
+    closed: Cell<bool>,
 }
 
 impl Guard {
     fn new(socket: WebSocketStream) -> Self {
-        Self { socket, closed: false }
+        Self { socket, closed: Cell::new(false) }
     }
 }
 
@@ -90,8 +91,8 @@ impl Deref for Guard {
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        if !self.closed {
-            self.socket.close(&JsValue::null());
+        if !self.closed.get() {
+            self.socket.close(&JsValue::null()).unwrap();
         }
     }
 }
@@ -104,8 +105,8 @@ pub struct Inner {
 
 impl Inner {
     pub async fn new(builder: WebSocketBuilder) -> io::Result<(Self, Info)> {
+        // Create WebSocketStream.
         let options = Object::new();
-
         if !builder.protocols.is_empty() {
             let arr = Array::new();
             for proto in builder.protocols {
@@ -113,18 +114,15 @@ impl Inner {
             }
             Reflect::set(&options, &JsValue::from_str("protocols"), &arr).unwrap();
         }
-
         let socket = Rc::new(Guard::new(WebSocketStream::new(&builder.url, &JsValue::from(options))));
 
+        // Open WebSocket connection.
         let opened = match socket.opened().await {
             Ok(opened) => opened,
-            Err(js) => {
-                return Err(Error::new(ErrorKind::ConnectionRefused, js.as_string().unwrap_or_default()));
-            }
+            Err(js) => return Err(js_err(ErrorKind::ConnectionRefused, &js)),
         };
 
-        let info = Info { url: socket.url(), protocol: opened.protocol(), interface: Interface::Stream };
-
+        // Obtain reader and writer.
         let writer = opened.writable().get_writer().unwrap();
         let reader = opened.readable().get_reader().dyn_into::<ReadableStreamDefaultReader>().unwrap();
 
@@ -132,9 +130,9 @@ impl Inner {
             Self {
                 socket: socket.clone(),
                 sender: Sender::new(socket.clone(), writer),
-                receiver: Receiver::new(socket, reader),
+                receiver: Receiver::new(socket.clone(), reader),
             },
-            info,
+            Info { url: socket.url(), protocol: opened.protocol(), interface: Interface::Stream },
         ))
     }
 
@@ -143,13 +141,18 @@ impl Inner {
         Closed(
             async move {
                 match JsFuture::from(closed).await {
-                    Ok(c) => Ok(ClosedReason {
+                    Ok(c) => ClosedReason {
                         code: CloseCode::from(
                             Reflect::get(&c, &JsValue::from_str("closeCode")).unwrap().as_f64().unwrap() as u16,
                         ),
                         reason: Reflect::get(&c, &JsValue::from_str("reason")).unwrap().as_string().unwrap(),
-                    }),
-                    Err(err) => Err(Error::new(ErrorKind::ConnectionReset, err.as_string().unwrap_or_default())),
+                        was_clean: true,
+                    },
+                    Err(err) => ClosedReason {
+                        code: CloseCode::AbnormalClosure,
+                        reason: js_err_msg(&err).unwrap_or_default(),
+                        was_clean: false,
+                    },
                 }
             }
             .boxed_local(),
@@ -173,6 +176,15 @@ impl Sender {
     fn new(socket: Rc<Guard>, writer: WritableStreamDefaultWriter) -> Self {
         Self { socket, writer, writing: None, flushing: None, closing: None }
     }
+
+    #[track_caller]
+    pub fn close(self, code: u16, reason: &str) {
+        let options = Object::new();
+        Reflect::set(&options, &JsValue::from("closeCode"), &JsValue::from(code)).unwrap();
+        Reflect::set(&options, &JsValue::from("reason"), &JsValue::from_str(reason)).unwrap();
+        self.socket.close(&options).unwrap();
+        self.socket.closed.set(true);
+    }
 }
 
 impl Sink<&JsValue> for Sender {
@@ -185,7 +197,7 @@ impl Sink<&JsValue> for Sender {
 
         let res = match ready!(writing.poll_unpin(cx)) {
             Ok(_) => Ok(()),
-            Err(err) => Err(io::Error::new(ErrorKind::ConnectionReset, err.as_string().unwrap_or_default())),
+            Err(err) => Err(js_err(ErrorKind::ConnectionReset, &err)),
         };
         self.writing = None;
         Poll::Ready(res)
@@ -209,7 +221,7 @@ impl Sink<&JsValue> for Sender {
         let Some(flushing) = &mut self.flushing else { unreachable!() };
         let res = match ready!(flushing.poll_unpin(cx)) {
             Ok(_) => Ok(()),
-            Err(err) => Err(io::Error::new(ErrorKind::ConnectionReset, err.as_string().unwrap_or_default())),
+            Err(err) => Err(js_err(ErrorKind::ConnectionReset, &err)),
         };
 
         self.flushing = None;
@@ -224,7 +236,7 @@ impl Sink<&JsValue> for Sender {
         let Some(closing) = &mut self.closing else { unreachable!() };
         let res = match ready!(closing.poll_unpin(cx)) {
             Ok(_) => Ok(()),
-            Err(err) => Err(io::Error::new(ErrorKind::ConnectionReset, err.as_string().unwrap_or_default())),
+            Err(err) => Err(js_err(ErrorKind::ConnectionReset, &err)),
         };
 
         self.closing = None;
@@ -234,22 +246,19 @@ impl Sink<&JsValue> for Sender {
 
 impl Drop for Sender {
     fn drop(&mut self) {
-        let writer = self.writer.clone();
-        spawn_local(async move {
-            let _ = JsFuture::from(writer.close());
-        });
+        // empty
     }
 }
 
 pub struct Receiver {
-    socket: Rc<Guard>,
+    _socket: Rc<Guard>,
     reader: ReadableStreamDefaultReader,
     reading: Option<JsFuture>,
 }
 
 impl Receiver {
     fn new(socket: Rc<Guard>, reader: ReadableStreamDefaultReader) -> Self {
-        Self { socket, reader, reading: None }
+        Self { _socket: socket, reader, reading: None }
     }
 }
 
@@ -276,9 +285,7 @@ impl Stream for Receiver {
                     }
                 }
             }
-            Err(err) => {
-                Some(Err(io::Error::new(ErrorKind::ConnectionReset, err.as_string().unwrap_or_default())))
-            }
+            Err(err) => Some(Err(js_err(ErrorKind::ConnectionReset, &err))),
         };
 
         self.reading = None;
@@ -288,9 +295,6 @@ impl Stream for Receiver {
 
 impl Drop for Receiver {
     fn drop(&mut self) {
-        let reader = self.reader.clone();
-        spawn_local(async move {
-            let _ = JsFuture::from(reader.cancel());
-        });
+        // empty
     }
 }

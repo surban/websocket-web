@@ -1,25 +1,43 @@
 [package]
 name = "websocket-web"
-description = "WebSockets on the web"
-version = "0.1.0"
+description = "WebSockets on the web 🕸️: WebSocket support in a JavaScript runtime environment, usually a web browser."
+authors = ["Sebastian Urban <surban@surban.net>"]
+repository = "https://github.com/surban/websocket-web"
+license = "Apache-2.0"
+keywords = ["websocket"]
+categories = ["web-programming::websocket", "wasm"]
+version = "0.1.2"
 edition = "2021"
 
 [dependencies]
-futures = "0.3"
+futures-core = { version = "0.3" }
+futures-channel = { version = "0.3" }
+futures-sink = { version = "0.3" }
+futures-util = { version = "0.3", features = ["sink"] }
+js-sys = "0.3"
+tokio = { version = "1.43", default-features = false, features = ["sync"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-js-sys = "0.3"
 web-sys = { version = "0.3", features = [
-    "console",
+    "BinaryType",
+    "CloseEvent",
     "ReadableStream",
     "ReadableStreamDefaultReader",
+    "MessageEvent",
     "WebSocket",
     "WritableStream",
     "WritableStreamDefaultWriter",
+    "Window",
+    "WorkerGlobalScope",
 ] }
 
 [dev-dependencies]
+tokio = { version = "1.43", default-features = false, features = ["io-util"] }
 wasm-bindgen-test = "0.3"
+web-sys = { version = "0.3", features = ["console"] }
+
+[package.metadata.docs.rs]
+targets = ["wasm32-unknown-unknown"]
 
 [patch.crates-io]
 js-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }

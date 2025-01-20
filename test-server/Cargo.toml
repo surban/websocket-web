@@ -3,6 +3,7 @@ name = "test-server"
 description = "WebSocket server for testing websocket-web"
 version = "0.0.0"
 edition = "2021"
+publish = false
 
 [dependencies]
 env_logger = "0.11"

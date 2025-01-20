@@ -1,10 +1,13 @@
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use std::{fmt, io};
-use std::future::Future;
+//! WebSocket closing.
 
-use futures::FutureExt;
+use std::{
+    fmt,
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
+use futures_util::FutureExt;
 
 /// Reason for why a WebSocket connection is closed.
 #[derive(Debug, Clone)]
@@ -14,6 +17,8 @@ pub struct ClosedReason {
     /// A string representing a human-readable description of
     /// the reason why the socket connection was closed.
     pub reason: String,
+    /// Indicates whether or not the connection was cleanly closed
+    pub was_clean: bool,
 }
 
 impl fmt::Display for ClosedReason {
@@ -133,8 +138,23 @@ impl From<u16> for CloseCode {
     }
 }
 
+impl CloseCode {
+    /// Whether the close code can be specified when closing a WebSocket
+    /// using [WebSocket::close_with_reason](crate::WebSocket::close_with_reason).
+    ///
+    /// The close code is valid if it is either [CloseCode::NormalClosure] or
+    /// [CloseCode::Other] with a value between 3000 and 4999.
+    pub fn is_valid(&self) -> bool {
+        match self {
+            Self::NormalClosure => true,
+            Self::Other(other) if 3000 <= *other && *other < 5000 => true,
+            _ => false,
+        }
+    }
+}
+
 /// A future that resolves once a WebSocket has been closed.
-pub struct Closed(pub(crate) Pin<Box<dyn Future<Output = io::Result<ClosedReason>>>>);
+pub struct Closed(pub(crate) Pin<Box<dyn Future<Output = ClosedReason>>>);
 
 impl fmt::Debug for Closed {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -143,7 +163,7 @@ impl fmt::Debug for Closed {
 }
 
 impl Future for Closed {
-    type Output = io::Result<ClosedReason>;
+    type Output = ClosedReason;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         self.0.poll_unpin(cx)
     }

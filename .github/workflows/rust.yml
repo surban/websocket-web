@@ -1,0 +1,48 @@
+name: Rust
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Set up Rust (nightly)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+          components: rustfmt, clippy
+          target: wasm32-unknown-unknown
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-chromedriver
+
+    #   - name: Install wasm-bindgen-cli
+    #     run: |
+    #       WASM_BINDGEN_VERSION=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name == "wasm-bindgen") | .version')
+    #       cargo install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}"
+
+      - name: Install wasm-bindgen-cli
+        run: |
+          cargo install wasm-bindgen-cli --git https://github.com/rust-wasi-web/wasm-bindgen.git --rev c0eb3111
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Build and run test-server in background
+        run: |
+          cargo build --manifest-path=test-server/Cargo.toml --release --target x86_64-unknown-linux-gnu
+          ./test-server/target/x86_64-unknown-linux-gnu/release/test-server &
+
+      - name: Run tests
+        run: |
+          CHROMEDRIVER=$(which chromedriver) \
+          WASM_BINDGEN_USE_BROWSER=1 \
+          WASM_BINDGEN_TEST_TIMEOUT=300 \
+          cargo +nightly test --release
