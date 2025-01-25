@@ -170,13 +170,12 @@ pub struct Sender {
     socket: Rc<Guard>,
     writer: WritableStreamDefaultWriter,
     writing: Option<JsFuture>,
-    flushing: Option<JsFuture>,
     closing: Option<JsFuture>,
 }
 
 impl Sender {
     fn new(socket: Rc<Guard>, writer: WritableStreamDefaultWriter) -> Self {
-        Self { socket, writer, writing: None, flushing: None, closing: None }
+        Self { socket, writer, writing: None, closing: None }
     }
 
     #[track_caller]
@@ -215,19 +214,8 @@ impl Sink<&JsValue> for Sender {
         Ok(())
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        if self.flushing.is_none() {
-            self.flushing = Some(JsFuture::from(self.writer.ready()));
-        }
-
-        let Some(flushing) = &mut self.flushing else { unreachable!() };
-        let res = match ready!(flushing.poll_unpin(cx)) {
-            Ok(_) => Ok(()),
-            Err(err) => Err(js_err(ErrorKind::ConnectionReset, &err)),
-        };
-
-        self.flushing = None;
-        Poll::Ready(res)
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
