@@ -27,8 +27,8 @@ use crate::{
 extern "C" {
     type WebSocketStream;
 
-    #[wasm_bindgen(constructor)]
-    fn new(url: &str, options: &JsValue) -> WebSocketStream;
+    #[wasm_bindgen(constructor, catch)]
+    fn new(url: &str, options: &JsValue) -> Result<WebSocketStream, JsValue>;
 
     #[wasm_bindgen(method, getter, catch)]
     async fn opened(this: &WebSocketStream) -> Result<WebSocketStreamOpened, JsValue>;
@@ -114,7 +114,9 @@ impl Inner {
             }
             Reflect::set(&options, &JsValue::from_str("protocols"), &arr).unwrap();
         }
-        let socket = Rc::new(Guard::new(WebSocketStream::new(&builder.url, &JsValue::from(options))));
+        let socket = WebSocketStream::new(&builder.url, &JsValue::from(options))
+            .map_err(|js| js_err(ErrorKind::ConnectionRefused, &js))?;
+        let socket = Rc::new(Guard::new(socket));
 
         // Open WebSocket connection.
         let opened = match socket.opened().await {

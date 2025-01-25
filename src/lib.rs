@@ -1,4 +1,4 @@
-//! # WebSockets on the web
+//! # WebSockets on the web 🕸️
 //!
 //! This crate provides WebSocket support in a JavaScript runtime environment, usually a web browser.
 //!

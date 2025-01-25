@@ -1,12 +1,12 @@
 [package]
 name = "websocket-web"
-description = "WebSockets on the web 🕸️: WebSocket support in a JavaScript runtime environment, usually a web browser."
+description = "WebSockets on the web 🕸️ — WebSocket support in a JavaScript runtime environment, usually a web browser."
 authors = ["Sebastian Urban <surban@surban.net>"]
 repository = "https://github.com/surban/websocket-web"
 license = "Apache-2.0"
 keywords = ["websocket"]
 categories = ["web-programming::websocket", "wasm"]
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 
 [dependencies]
