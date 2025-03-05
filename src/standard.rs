@@ -76,13 +76,6 @@ impl Inner {
         ));
         socket.set_binary_type(BinaryType::Arraybuffer);
 
-        // Wait for connection to be established.
-        let connect = Promise::new(&mut |resolve, reject| {
-            socket.set_onopen(Some(&resolve));
-            socket.set_onerror(Some(&reject));
-        });
-        JsFuture::from(connect).await.map_err(|err| js_err(ErrorKind::ConnectionRefused, &err))?;
-
         // Setup channel.
         let (tx, rx) = mpsc::unbounded();
         let tx = Rc::new(RefCell::new(Some(tx)));
@@ -139,6 +132,13 @@ impl Inner {
             }) as Box<dyn Fn(_)>)
         };
         socket.set_onmessage(Some(on_msg.into_js_value().unchecked_ref()));
+
+        // Wait for connection to be established.
+        let connect = Promise::new(&mut |resolve, reject| {
+            socket.set_onopen(Some(&resolve));
+            socket.set_onerror(Some(&reject));
+        });
+        JsFuture::from(connect).await.map_err(|err| js_err(ErrorKind::ConnectionRefused, &err))?;
 
         Ok((
             Self {
