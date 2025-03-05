@@ -12,15 +12,19 @@ use websocket_web::*;
 mod util;
 use util::ResultExt;
 
-const URL: &str = "ws://127.0.0.1:8765";
+fn url() -> String {
+    let host = web_sys::window().unwrap().location().hostname().unwrap();
+    format!("ws://{host}:8765")
+}
 
 async fn echo(interface: Option<Interface>) {
-    let mut builder = WebSocketBuilder::new(URL);
+    let url = url();
+    let mut builder = WebSocketBuilder::new(&url);
     if let Some(interface) = interface {
         builder.set_interface(interface);
     }
 
-    log!("Connecting to {URL} using {interface:?}");
+    log!("Connecting to {url} using {interface:?}");
     let mut socket = builder.connect().await.expect_log("connect failed");
     log!("Connected: {socket:?}");
 
@@ -68,12 +72,13 @@ async fn backpressure(interface: Option<Interface>) {
     const CNT: usize = 100_000;
     const CLOSE_MSG: &str = "CLOSE-123";
 
-    let mut builder = WebSocketBuilder::new(URL);
+    let url = url();
+    let mut builder = WebSocketBuilder::new(&url);
     if let Some(interface) = interface {
         builder.set_interface(interface);
     }
 
-    log!("Connecting to {URL} using {interface:?}");
+    log!("Connecting to {url} using {interface:?}");
     let socket = builder.connect().await.expect_log("connect failed");
     log!("Connected: {socket:?}");
 
@@ -155,12 +160,13 @@ async fn io(interface: Option<Interface>) {
     const CNT: usize = 100_000;
     const CLOSE_MSG: &str = "CLOSE-123";
 
-    let mut builder = WebSocketBuilder::new(URL);
+    let url = url();
+    let mut builder = WebSocketBuilder::new(&url);
     if let Some(interface) = interface {
         builder.set_interface(interface);
     }
 
-    log!("Connecting to {URL} using {interface:?}");
+    log!("Connecting to {url} using {interface:?}");
     let socket = builder.connect().await.expect_log("connect failed");
     log!("Connected: {socket:?}");
 
@@ -220,7 +226,7 @@ async fn io(interface: Option<Interface>) {
 #[wasm_bindgen_test]
 async fn io_stream() {
     if !Interface::Stream.is_supported() {
-        log!("WebSocketStream not supported");
+        msg!("WebSocketStream not supported");
         return;
     }
     io(Some(Interface::Stream)).await;

@@ -34,7 +34,13 @@ web-sys = { version = "0.3", features = [
 [dev-dependencies]
 tokio = { version = "1.43", default-features = false, features = ["io-util"] }
 wasm-bindgen-test = "0.3"
-web-sys = { version = "0.3", features = ["console"] }
+web-sys = { version = "0.3", features = [
+    "console",
+    "Document",
+    "HtmlElement",
+    "Location",
+    "Performance",
+] }
 
 [package.metadata.docs.rs]
 targets = ["wasm32-unknown-unknown"]

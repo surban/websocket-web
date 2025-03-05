@@ -68,3 +68,32 @@ impl<T> ResultExt<T> for Option<T> {
         }
     }
 }
+
+/// Current time in seconds.
+#[allow(dead_code)]
+pub fn now() -> f64 {
+    let window = web_sys::window().unwrap();
+    let performance = window.performance().unwrap();
+    performance.now() / 1000.
+}
+
+/// Message on page.
+#[macro_export]
+macro_rules! msg {
+    ($($arg:tt)*) => {
+        $crate::util::write_msg(&format!($($arg)*));
+    }
+}
+
+#[allow(dead_code)]
+pub fn write_msg(msg: &str) {
+    log!("{msg}");
+
+    let window = web_sys::window().unwrap();
+    let document = window.document().unwrap();
+    let body = document.body().unwrap();
+
+    let message = document.create_element("div").unwrap();
+    message.set_inner_html(&format!("<pre>{msg}</pre>"));
+    body.append_child(&message).unwrap();
+}
