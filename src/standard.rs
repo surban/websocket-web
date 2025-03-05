@@ -174,17 +174,11 @@ pub struct Sender {
     socket: Rc<Guard>,
     send_buffer_size: usize,
     writing: Option<Pin<Box<dyn Future<Output = io::Result<()>>>>>,
-    flushing: Option<Pin<Box<dyn Future<Output = io::Result<()>>>>>,
 }
 
 impl Sender {
     fn new(socket: Rc<Guard>, send_buffer_size: Option<usize>) -> Self {
-        Self {
-            socket,
-            send_buffer_size: send_buffer_size.unwrap_or(DEFAULT_SEND_BUFFER_SIZE),
-            writing: None,
-            flushing: None,
-        }
+        Self { socket, send_buffer_size: send_buffer_size.unwrap_or(DEFAULT_SEND_BUFFER_SIZE), writing: None }
     }
 
     #[track_caller]
@@ -239,16 +233,8 @@ impl Sink<&JsValue> for Sender {
         Ok(())
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        if self.flushing.is_none() {
-            self.flushing = Some(Box::pin(self.wait_for_buffered_amount(0)));
-        }
-
-        let Some(flushing) = &mut self.flushing else { unreachable!() };
-
-        let res = ready!(flushing.poll_unpin(cx));
-        self.flushing = None;
-        Poll::Ready(res)
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {

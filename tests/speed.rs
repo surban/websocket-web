@@ -65,7 +65,7 @@ async fn speed(interface: Option<Interface>, mode: Mode) {
             while now() - start < DURATION {
                 let data = vec![2; MSG_SIZE];
                 total += data.len();
-                write.feed(data).await.unwrap_log();
+                write.send(data).await.unwrap_log();
             }
 
             let mb = total as f64 / MB as f64;
