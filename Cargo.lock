@@ -389,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "websocket-web"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "futures-channel",
  "futures-core",
