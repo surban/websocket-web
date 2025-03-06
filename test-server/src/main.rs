@@ -2,15 +2,17 @@
 
 use futures::{future, SinkExt, StreamExt, TryStreamExt};
 use log::{info, warn};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::oneshot;
-use tokio::sync::oneshot::error::TryRecvError;
-use tokio::task::JoinSet;
-use tokio::time::Instant;
-use tokio::try_join;
-use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
-use tokio_tungstenite::tungstenite::protocol::CloseFrame;
-use tokio_tungstenite::tungstenite::{Bytes, Message};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::{oneshot, oneshot::error::TryRecvError},
+    task::JoinSet,
+    time::Instant,
+    try_join,
+};
+use tokio_tungstenite::tungstenite::{
+    protocol::{frame::coding::CloseCode, CloseFrame},
+    Bytes, Message,
+};
 
 #[tokio::main]
 async fn main() {
@@ -90,7 +92,7 @@ async fn speed_server() {
 }
 
 async fn accept_speed(stream: TcpStream) {
-    const MSG_SIZE: usize = 16_384;
+    const MSG_SIZE: usize = 4096;
     const MB: usize = 1_048_576;
 
     let addr = stream.peer_addr().expect("connected streams should have a peer address");

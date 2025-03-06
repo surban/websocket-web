@@ -32,7 +32,7 @@ impl AsRef<str> for Mode {
 }
 
 async fn speed(interface: Option<Interface>, mode: Mode) {
-    const MSG_SIZE: usize = 16_384;
+    const MSG_SIZE: usize = 4096;
     const MB: usize = 1_048_576;
     const DURATION: f64 = 10.;
 
