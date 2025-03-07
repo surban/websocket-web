@@ -30,7 +30,7 @@ jobs:
 
       - name: Install wasm-bindgen-cli
         run: |
-          cargo install wasm-bindgen-cli --git https://github.com/rust-wasi-web/wasm-bindgen.git --rev c0eb3111
+          cargo install wasm-bindgen-cli --git https://github.com/rust-wasi-web/wasm-bindgen.git
 
       - name: Check formatting
         run: cargo fmt --all -- --check
