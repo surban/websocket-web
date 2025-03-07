@@ -27,7 +27,6 @@ use crate::{
     CloseCode, ClosedReason, Info, Interface, Msg, WebSocketBuilder,
 };
 
-const SEND_BUFFER_CHECK_INTERVAL: Duration = Duration::from_millis(1);
 const DEFAULT_SEND_BUFFER_SIZE: usize = 4_194_304;
 const DEFAULT_RECEIVE_BUFFER_SIZE: usize = 67_108_864;
 
@@ -78,14 +77,14 @@ impl Inner {
 
         // Setup channel.
         let (tx, rx) = mpsc::unbounded();
-        let tx = Rc::new(RefCell::new(Some(tx)));
+        let tx_cell = Rc::new(RefCell::new(Some(tx)));
         let (closed_tx, closed_rx) = watch::channel(None);
         let buffered =
             Rc::new(Semaphore::new(builder.receive_buffer_size.unwrap_or(DEFAULT_RECEIVE_BUFFER_SIZE)));
 
         // Setup close handler.
         let on_close = {
-            let tx = tx.clone();
+            let tx = tx_cell.clone();
             let closed_tx = closed_tx.clone();
             Closure::wrap(Box::new(move |event: web_sys::CloseEvent| {
                 closed_tx.send_replace(Some(ClosedReason {
@@ -102,6 +101,8 @@ impl Inner {
         let on_msg = {
             let buffered = buffered.clone();
             Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
+                let tx = tx_cell.borrow();
+                let Some(tx) = &*tx else { return };
                 let msg = {
                     let data = event.data();
                     if let Some(buf) = data.dyn_ref::<ArrayBuffer>() {
@@ -115,8 +116,6 @@ impl Inner {
                 match u32::try_from(msg.len()).ok().and_then(|len| buffered.try_acquire_many(len).ok()) {
                     Some(permit) => {
                         // Permits will be added back when message is dequeued by receiver.
-                        let tx = tx.borrow();
-                        let Some(tx) = &*tx else { return };
                         let _ = tx.unbounded_send(msg);
                         permit.forget();
                     }
@@ -126,7 +125,7 @@ impl Inner {
                             reason: "receive buffer overflow".to_string(),
                             was_clean: false,
                         }));
-                        tx.replace(None);
+                        tx_cell.replace(None);
                     }
                 }
             }) as Box<dyn Fn(_)>)
@@ -199,7 +198,7 @@ impl Sender {
                     return Ok(());
                 }
 
-                sleep(SEND_BUFFER_CHECK_INTERVAL).await;
+                sleep(Duration::ZERO).await;
             }
         }
     }
@@ -221,6 +220,10 @@ impl Sink<&JsValue> for Sender {
     }
 
     fn start_send(self: Pin<&mut Self>, item: &JsValue) -> Result<(), Self::Error> {
+        if self.writing.is_some() {
+            panic!("WebSocket not ready for sending");
+        }
+
         if let Some(array) = item.dyn_ref::<Uint8Array>() {
             self.socket.send_with_js_u8_array(array)
         } else if let Some(str) = item.as_string() {
@@ -238,7 +241,7 @@ impl Sink<&JsValue> for Sender {
     }
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        ready!(self.as_mut().poll_flush(cx))?;
+        ready!(self.as_mut().poll_ready(cx))?;
         let res = self.socket.close().map_err(|err| js_err(ErrorKind::ConnectionReset, &err));
         Poll::Ready(res)
     }
