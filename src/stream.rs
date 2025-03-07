@@ -23,6 +23,8 @@ use crate::{
     Info, Interface, Msg, WebSocketBuilder,
 };
 
+const DEFAULT_SEND_BUFFER_SIZE: usize = 4_194_304;
+
 #[wasm_bindgen]
 extern "C" {
     type WebSocketStream;
@@ -131,7 +133,7 @@ impl Inner {
         Ok((
             Self {
                 socket: socket.clone(),
-                sender: Sender::new(socket.clone(), writer),
+                sender: Sender::new(socket.clone(), writer, builder.send_buffer_size),
                 receiver: Receiver::new(socket.clone(), reader),
             },
             Info { url: socket.url(), protocol: opened.protocol(), interface: Interface::Stream },
@@ -171,11 +173,20 @@ pub struct Sender {
     writer: WritableStreamDefaultWriter,
     writing: Option<JsFuture>,
     closing: Option<JsFuture>,
+    buffered: usize,
+    send_buffer_size: usize,
 }
 
 impl Sender {
-    fn new(socket: Rc<Guard>, writer: WritableStreamDefaultWriter) -> Self {
-        Self { socket, writer, writing: None, closing: None }
+    fn new(socket: Rc<Guard>, writer: WritableStreamDefaultWriter, send_buffer_size: Option<usize>) -> Self {
+        Self {
+            socket,
+            writer,
+            writing: None,
+            closing: None,
+            buffered: 0,
+            send_buffer_size: send_buffer_size.unwrap_or(DEFAULT_SEND_BUFFER_SIZE),
+        }
     }
 
     #[track_caller]
@@ -188,7 +199,7 @@ impl Sender {
     }
 }
 
-impl Sink<&JsValue> for Sender {
+impl Sink<(&JsValue, usize)> for Sender {
     type Error = io::Error;
 
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
@@ -200,16 +211,24 @@ impl Sink<&JsValue> for Sender {
             Ok(_) => Ok(()),
             Err(err) => Err(js_err(ErrorKind::ConnectionReset, &err)),
         };
+
         self.writing = None;
+        self.buffered = 0;
+
         Poll::Ready(res)
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: &JsValue) -> Result<(), Self::Error> {
+    fn start_send(mut self: Pin<&mut Self>, (item, len): (&JsValue, usize)) -> Result<(), Self::Error> {
         if self.writing.is_some() {
             panic!("WebSocket not ready for sending");
         }
 
-        self.writing = Some(JsFuture::from(self.writer.write_with_chunk(item)));
+        let promise = self.writer.write_with_chunk(item);
+        self.buffered += len;
+
+        if self.buffered >= self.send_buffer_size {
+            self.writing = Some(JsFuture::from(promise));
+        }
 
         Ok(())
     }
