@@ -6,7 +6,7 @@ repository = "https://github.com/surban/websocket-web"
 license = "Apache-2.0"
 keywords = ["websocket"]
 categories = ["web-programming::websocket", "wasm"]
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 
 [dependencies]
