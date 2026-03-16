@@ -25,7 +25,7 @@ async fn main() {
 }
 
 async fn echo_server() {
-    let addr = "127.0.0.1:8765";
+    let addr = "0.0.0.0:8765";
     let try_socket = TcpListener::bind(addr).await;
     let listener = try_socket.expect("Failed to bind");
     info!("Echo listening on: {}", addr);
@@ -81,7 +81,7 @@ async fn accept_echo(stream: TcpStream) {
 }
 
 async fn speed_server() {
-    let addr = "127.0.0.1:8766";
+    let addr = "0.0.0.0:8766";
     let try_socket = TcpListener::bind(addr).await;
     let listener = try_socket.expect("Failed to bind");
     info!("Speed listening on: {}", addr);
