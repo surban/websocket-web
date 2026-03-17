@@ -71,7 +71,6 @@ use js_sys::{Reflect, Uint8Array};
 use std::{
     fmt, io,
     io::ErrorKind,
-    mem,
     pin::Pin,
     rc::Rc,
     task::{ready, Context, Poll},
@@ -128,7 +127,7 @@ impl Msg {
     /// Convert to binary message.
     pub fn to_vec(self) -> Vec<u8> {
         match self {
-            Self::Text(text) => text.as_bytes().to_vec(),
+            Self::Text(text) => text.into_bytes(),
             Self::Binary(vec) => vec,
         }
     }
@@ -547,14 +546,10 @@ impl AsyncRead for WebSocket {
             self.read_buf = msg.to_vec();
         }
 
-        let part = if buf.remaining() < self.read_buf.len() {
-            let rem = self.read_buf.split_off(buf.remaining());
-            mem::replace(&mut self.read_buf, rem)
-        } else {
-            mem::take(&mut self.read_buf)
-        };
+        let to_copy = buf.remaining().min(self.read_buf.len());
+        buf.put_slice(&self.read_buf[..to_copy]);
+        self.read_buf.drain(..to_copy);
 
-        buf.put_slice(&part);
         Poll::Ready(Ok(()))
     }
 }
@@ -835,14 +830,10 @@ impl AsyncRead for WebSocketReceiver {
             self.read_buf = msg.to_vec();
         }
 
-        let part = if buf.remaining() < self.read_buf.len() {
-            let rem = self.read_buf.split_off(buf.remaining());
-            mem::replace(&mut self.read_buf, rem)
-        } else {
-            mem::take(&mut self.read_buf)
-        };
+        let to_copy = buf.remaining().min(self.read_buf.len());
+        buf.put_slice(&self.read_buf[..to_copy]);
+        self.read_buf.drain(..to_copy);
 
-        buf.put_slice(&part);
         Poll::Ready(Ok(()))
     }
 }
