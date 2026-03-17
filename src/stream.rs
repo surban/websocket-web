@@ -15,7 +15,10 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{ReadableStream, ReadableStreamDefaultReader, WritableStream, WritableStreamDefaultWriter};
+use web_sys::{
+    ReadableStream, ReadableStreamDefaultReader, ReadableStreamReadResult, WritableStream,
+    WritableStreamDefaultWriter,
+};
 
 use crate::{
     closed::{CloseCode, Closed, ClosedReason},
@@ -145,13 +148,14 @@ impl Inner {
         Closed(
             async move {
                 match JsFuture::from(closed).await {
-                    Ok(c) => ClosedReason {
-                        code: CloseCode::from(
-                            Reflect::get(&c, &JsValue::from_str("closeCode")).unwrap().as_f64().unwrap() as u16,
-                        ),
-                        reason: Reflect::get(&c, &JsValue::from_str("reason")).unwrap().as_string().unwrap(),
-                        was_clean: true,
-                    },
+                    Ok(c) => {
+                        let c: WebSocketStreamClosed = c.unchecked_into();
+                        ClosedReason {
+                            code: CloseCode::from(c.closeCode() as u16),
+                            reason: c.reason(),
+                            was_clean: true,
+                        }
+                    }
                     Err(err) => ClosedReason {
                         code: CloseCode::AbnormalClosure,
                         reason: js_err_msg(&err).unwrap_or_default(),
@@ -282,22 +286,27 @@ impl Stream for Receiver {
         let Some(reading) = &mut self.reading else { unreachable!() };
         let res = match ready!(reading.poll_unpin(cx)) {
             Ok(data) => {
-                if Reflect::get(&data, &JsValue::from_str("done")).unwrap().as_bool().unwrap() {
+                let result: ReadableStreamReadResult = data.unchecked_into();
+                if result.get_done().unwrap_or_default() {
+                    self.reading = None;
                     None
                 } else {
-                    let chunk = Reflect::get(&data, &JsValue::from_str("value")).unwrap();
+                    let chunk = result.get_value();
+                    // Pipeline: start next read immediately to reduce per-message latency.
+                    self.reading = Some(JsFuture::from(self.reader.read()));
                     if chunk.is_string() {
                         Some(Ok(Msg::Text(chunk.as_string().unwrap())))
                     } else {
-                        let buffer = Uint8Array::new(&chunk).to_vec();
-                        Some(Ok(Msg::Binary(buffer)))
+                        Some(Ok(Msg::Binary(Uint8Array::new(&chunk).to_vec())))
                     }
                 }
             }
-            Err(err) => Some(Err(js_err(ErrorKind::ConnectionReset, &err))),
+            Err(err) => {
+                self.reading = None;
+                Some(Err(js_err(ErrorKind::ConnectionReset, &err)))
+            }
         };
 
-        self.reading = None;
         Poll::Ready(res)
     }
 }
