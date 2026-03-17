@@ -414,7 +414,6 @@ dependencies = [
 name = "websocket-web"
 version = "0.1.7"
 dependencies = [
- "futures-channel",
  "futures-core",
  "futures-sink",
  "futures-util",

@@ -1,22 +1,22 @@
 //! Standarized WebSocket API.
 
-use futures_channel::mpsc;
 use futures_core::Stream;
 use futures_sink::Sink;
-use futures_util::{FutureExt, StreamExt};
+use futures_util::FutureExt;
 use js_sys::{Array, ArrayBuffer, Promise, Uint8Array};
 use std::{
     cell::{Cell, RefCell},
+    collections::VecDeque,
     future::Future,
     io,
     io::{Error, ErrorKind},
     ops::Deref,
     pin::Pin,
     rc::Rc,
-    task::{ready, Context, Poll},
+    task::{ready, Context, Poll, Waker},
     time::Duration,
 };
-use tokio::sync::{watch, Semaphore};
+use tokio::sync::watch;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::BinaryType;
@@ -56,6 +56,60 @@ impl Drop for Guard {
     }
 }
 
+struct RecvQueue {
+    msgs: RefCell<VecDeque<Msg>>,
+    waker: Cell<Option<Waker>>,
+    open: Cell<bool>,
+    buffered: Cell<usize>,
+    buffer_limit: usize,
+}
+
+impl RecvQueue {
+    pub fn new(buffer_limit: usize) -> Self {
+        Self {
+            msgs: RefCell::new(VecDeque::new()),
+            waker: Cell::new(None),
+            open: Cell::new(true),
+            buffered: Cell::new(0),
+            buffer_limit,
+        }
+    }
+
+    fn wake(&self) {
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
+    }
+
+    pub fn close(&self) {
+        self.open.set(false);
+        self.wake();
+    }
+
+    pub fn enqueue(&self, msg: Msg) -> bool {
+        if !self.open.get() {
+            return false;
+        }
+
+        let new_buffered = self.buffered.get() + msg.len();
+        if new_buffered > self.buffer_limit {
+            return false;
+        }
+
+        self.buffered.set(new_buffered);
+        self.msgs.borrow_mut().push_back(msg);
+        self.wake();
+
+        true
+    }
+
+    pub fn dequeue(&self) -> Option<Msg> {
+        let msg = self.msgs.borrow_mut().pop_front()?;
+        self.buffered.set(self.buffered.get() - msg.len());
+        Some(msg)
+    }
+}
+
 pub struct Inner {
     pub(crate) sender: Sender,
     pub(crate) receiver: Receiver,
@@ -75,16 +129,14 @@ impl Inner {
         ));
         socket.set_binary_type(BinaryType::Arraybuffer);
 
-        // Setup channel.
-        let (tx, rx) = mpsc::unbounded();
-        let tx_cell = Rc::new(RefCell::new(Some(tx)));
+        // Setup receive queue.
+        let recv_queue =
+            Rc::new(RecvQueue::new(builder.receive_buffer_size.unwrap_or(DEFAULT_RECEIVE_BUFFER_SIZE)));
         let (closed_tx, closed_rx) = watch::channel(None);
-        let buffered =
-            Rc::new(Semaphore::new(builder.receive_buffer_size.unwrap_or(DEFAULT_RECEIVE_BUFFER_SIZE)));
 
         // Setup close handler.
         let on_close = {
-            let tx = tx_cell.clone();
+            let recv_queue = recv_queue.clone();
             let closed_tx = closed_tx.clone();
             Closure::wrap(Box::new(move |event: web_sys::CloseEvent| {
                 closed_tx.send_replace(Some(ClosedReason {
@@ -92,17 +144,15 @@ impl Inner {
                     reason: event.reason(),
                     was_clean: event.was_clean(),
                 }));
-                tx.replace(None);
+                recv_queue.close();
             }) as Box<dyn Fn(_)>)
         };
         socket.set_onclose(Some(on_close.into_js_value().unchecked_ref()));
 
         // Setup message receive handler.
         let on_msg = {
-            let buffered = buffered.clone();
+            let recv_queue = recv_queue.clone();
             Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
-                let tx = tx_cell.borrow();
-                let Some(tx) = &*tx else { return };
                 let msg = {
                     let data = event.data();
                     if let Some(buf) = data.dyn_ref::<ArrayBuffer>() {
@@ -113,20 +163,13 @@ impl Inner {
                         unreachable!("received event with unknown data type");
                     }
                 };
-                match u32::try_from(msg.len()).ok().and_then(|len| buffered.try_acquire_many(len).ok()) {
-                    Some(permit) => {
-                        // Permits will be added back when message is dequeued by receiver.
-                        let _ = tx.unbounded_send(msg);
-                        permit.forget();
-                    }
-                    None => {
-                        closed_tx.send_replace(Some(ClosedReason {
-                            code: CloseCode::MessageTooBig,
-                            reason: "receive buffer overflow".to_string(),
-                            was_clean: false,
-                        }));
-                        tx_cell.replace(None);
-                    }
+                if !recv_queue.enqueue(msg) {
+                    closed_tx.send_replace(Some(ClosedReason {
+                        code: CloseCode::MessageTooBig,
+                        reason: "receive buffer overflow".to_string(),
+                        was_clean: false,
+                    }));
+                    recv_queue.close();
                 }
             }) as Box<dyn Fn(_)>)
         };
@@ -142,7 +185,7 @@ impl Inner {
         Ok((
             Self {
                 sender: Sender::new(socket.clone(), builder.send_buffer_size),
-                receiver: Receiver::new(socket.clone(), rx, closed_rx.clone(), buffered),
+                receiver: Receiver::new(socket.clone(), recv_queue, closed_rx.clone()),
                 closed_rx,
             },
             Info { url: builder.url, protocol: socket.protocol(), interface: Interface::Standard },
@@ -255,37 +298,36 @@ impl Drop for Sender {
 
 pub struct Receiver {
     _socket: Rc<Guard>,
-    rx: mpsc::UnboundedReceiver<Msg>,
+    queue: Rc<RecvQueue>,
     closed_rx: watch::Receiver<Option<ClosedReason>>,
-    buffered: Rc<Semaphore>,
 }
 
 impl Receiver {
-    fn new(
-        socket: Rc<Guard>, rx: mpsc::UnboundedReceiver<Msg>, closed_rx: watch::Receiver<Option<ClosedReason>>,
-        buffered: Rc<Semaphore>,
-    ) -> Self {
-        Self { _socket: socket, rx, closed_rx, buffered }
+    fn new(socket: Rc<Guard>, queue: Rc<RecvQueue>, closed_rx: watch::Receiver<Option<ClosedReason>>) -> Self {
+        Self { _socket: socket, queue, closed_rx }
     }
 }
 
 impl Stream for Receiver {
     type Item = io::Result<Msg>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        match ready!(self.rx.poll_next_unpin(cx)) {
-            Some(msg) => {
-                self.buffered.add_permits(msg.len());
-                Poll::Ready(Some(Ok(msg)))
-            }
-            None => match &*self.closed_rx.borrow() {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        if let Some(msg) = self.queue.dequeue() {
+            return Poll::Ready(Some(Ok(msg)));
+        }
+
+        if !self.queue.open.get() {
+            return match &*self.closed_rx.borrow() {
                 Some(reason) if reason.was_clean => Poll::Ready(None),
                 Some(reason) => {
                     Poll::Ready(Some(Err(Error::new(ErrorKind::ConnectionReset, reason.reason.clone()))))
                 }
                 None => Poll::Ready(Some(Err(Error::new(ErrorKind::ConnectionReset, "WebSocket closed")))),
-            },
+            };
         }
+
+        self.queue.waker.set(Some(cx.waker().clone()));
+        Poll::Pending
     }
 }
 
