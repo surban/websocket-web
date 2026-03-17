@@ -37,10 +37,11 @@
 //! It then sends the text message `Test123` and then receiving one incoming message.
 //! Finally, it explicitly closes the WebSocket with the reason `Goodbye!`.
 //!
-//! ```
+//! ```no_run
 //! use websocket_web::{WebSocket, CloseCode};
 //! use futures_util::{SinkExt, StreamExt};
 //!
+//! # async fn example() {
 //! // Connect to WebSocket echo server running on localhost.
 //! let mut socket = WebSocket::connect("ws://127.0.0.1:8765").await.unwrap();
 //!
@@ -53,6 +54,7 @@
 //!
 //! // Explicitly close WebSocket with close code and reason (optional).
 //! socket.close_with_reason(CloseCode::NormalClosure, "Goodbye!");
+//! # }
 //! ```
 
 #![warn(missing_docs)]
