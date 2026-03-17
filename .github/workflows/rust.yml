@@ -23,14 +23,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y chromium-chromedriver
 
-    #   - name: Install wasm-bindgen-cli
-    #     run: |
-    #       WASM_BINDGEN_VERSION=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name == "wasm-bindgen") | .version')
-    #       cargo install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}"
-
       - name: Install wasm-bindgen-cli
         run: |
-          cargo install wasm-bindgen-cli --git https://github.com/rust-wasi-web/wasm-bindgen.git
+          WASM_BINDGEN_VERSION=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name == "wasm-bindgen") | .version')
+          cargo install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}"
+
+      # - name: Install wasm-bindgen-cli
+      #   run: |
+      #     cargo install wasm-bindgen-cli --git https://github.com/rust-wasi-web/wasm-bindgen.git
 
       - name: Check formatting
         run: cargo fmt --all -- --check
