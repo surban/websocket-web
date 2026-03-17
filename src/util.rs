@@ -53,3 +53,28 @@ pub fn js_err(kind: ErrorKind, value: &JsValue) -> io::Error {
     let msg = js_err_msg(value).unwrap_or_else(|| kind.to_string());
     io::Error::new(kind, msg)
 }
+
+/// Creates a [`Uint8Array`] suitable for passing to Web APIs.
+///
+/// When Wasm runs with threads, linear memory is backed by [`SharedArrayBuffer`],
+/// but Web APIs like WebSocket reject views into shared buffers. In that case
+/// the data is copied into a fresh (non-shared) [`Uint8Array`].
+///
+/// # Safety
+/// When Wasm memory is **not** shared, this returns a direct view into Wasm
+/// linear memory. The caller must ensure the returned array is consumed
+/// synchronously (before any `.await` or memory-growing operation).
+///
+/// [`SharedArrayBuffer`]: js_sys::SharedArrayBuffer
+pub(crate) unsafe fn uint8_array_for_api(data: &[u8]) -> js_sys::Uint8Array {
+    // SAFETY (view): caller guarantees no memory growth before synchronous consumption.
+    let view = unsafe { js_sys::Uint8Array::view(data) };
+    if view.buffer().is_instance_of::<js_sys::SharedArrayBuffer>() {
+        // Running with threads: copy to a regular ArrayBuffer.
+        let copy = js_sys::Uint8Array::new_with_length(data.len() as u32);
+        copy.set(&view, 0);
+        copy
+    } else {
+        view
+    }
+}

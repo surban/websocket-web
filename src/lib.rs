@@ -76,6 +76,7 @@ use std::{
     task::{ready, Context, Poll},
 };
 use tokio::io::{AsyncRead, AsyncWrite};
+use util::uint8_array_for_api;
 use wasm_bindgen::prelude::*;
 
 pub use closed::{CloseCode, Closed, ClosedReason};
@@ -392,6 +393,20 @@ impl WebSocket {
         }
     }
 
+    fn start_send_binary(mut self: Pin<&mut Self>, data: &[u8]) -> Result<(), io::Error> {
+        match &mut self.inner {
+            Inner::Stream(inner) => {
+                let array: JsValue = Uint8Array::from(data).into();
+                inner.sender.start_send_unpin((&array, data.len()))
+            }
+            Inner::Standard(inner) => {
+                // SAFETY: WebSocket.send() copies data synchronously.
+                let array: JsValue = unsafe { uint8_array_for_api(data) }.into();
+                inner.sender.start_send_unpin(&array)
+            }
+        }
+    }
+
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         match &mut self.inner {
             Inner::Stream(inner) => inner.sender.poll_flush_unpin(cx),
@@ -455,7 +470,7 @@ impl Sink<&[u8]> for WebSocket {
     }
 
     fn start_send(self: Pin<&mut Self>, item: &[u8]) -> Result<(), Self::Error> {
-        self.start_send(&Uint8Array::from(item), item.len())
+        self.start_send_binary(item)
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
@@ -475,7 +490,7 @@ impl Sink<Vec<u8>> for WebSocket {
     }
 
     fn start_send(self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
-        self.start_send(&Uint8Array::from(&item[..]), item.len())
+        self.start_send_binary(&item)
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
@@ -497,7 +512,7 @@ impl Sink<Msg> for WebSocket {
     fn start_send(self: Pin<&mut Self>, item: Msg) -> Result<(), Self::Error> {
         match item {
             Msg::Text(text) => self.start_send(&JsValue::from_str(&text), text.len()),
-            Msg::Binary(vec) => self.start_send(&Uint8Array::from(&vec[..]), vec.len()),
+            Msg::Binary(vec) => self.start_send_binary(&vec),
         }
     }
 
@@ -513,7 +528,7 @@ impl Sink<Msg> for WebSocket {
 impl AsyncWrite for WebSocket {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize, io::Error>> {
         ready!(self.as_mut().poll_ready(cx))?;
-        self.start_send(&Uint8Array::from(buf), buf.len())?;
+        self.start_send_binary(buf)?;
         Poll::Ready(Ok(buf.len()))
     }
 
@@ -634,6 +649,20 @@ impl WebSocketSender {
         }
     }
 
+    fn start_send_binary(mut self: Pin<&mut Self>, data: &[u8]) -> Result<(), io::Error> {
+        match &mut self.inner {
+            SenderInner::Stream(inner) => {
+                let array: JsValue = Uint8Array::from(data).into();
+                inner.start_send_unpin((&array, data.len()))
+            }
+            SenderInner::Standard(inner) => {
+                // SAFETY: WebSocket.send() copies data synchronously.
+                let array: JsValue = unsafe { uint8_array_for_api(data) }.into();
+                inner.start_send_unpin(&array)
+            }
+        }
+    }
+
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         match &mut self.inner {
             SenderInner::Stream(inner) => inner.poll_flush_unpin(cx),
@@ -697,7 +726,7 @@ impl Sink<&[u8]> for WebSocketSender {
     }
 
     fn start_send(self: Pin<&mut Self>, item: &[u8]) -> Result<(), Self::Error> {
-        self.start_send(&Uint8Array::from(item), item.len())
+        self.start_send_binary(item)
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
@@ -717,7 +746,7 @@ impl Sink<Vec<u8>> for WebSocketSender {
     }
 
     fn start_send(self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
-        self.start_send(&Uint8Array::from(&item[..]), item.len())
+        self.start_send_binary(&item)
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
@@ -739,7 +768,7 @@ impl Sink<Msg> for WebSocketSender {
     fn start_send(self: Pin<&mut Self>, item: Msg) -> Result<(), Self::Error> {
         match item {
             Msg::Text(text) => self.start_send(&JsValue::from_str(&text), text.len()),
-            Msg::Binary(vec) => self.start_send(&Uint8Array::from(&vec[..]), vec.len()),
+            Msg::Binary(vec) => self.start_send_binary(&vec),
         }
     }
 
@@ -755,7 +784,7 @@ impl Sink<Msg> for WebSocketSender {
 impl AsyncWrite for WebSocketSender {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize, io::Error>> {
         ready!(self.as_mut().poll_ready(cx))?;
-        self.start_send(&Uint8Array::from(buf), buf.len())?;
+        self.start_send_binary(buf)?;
         Poll::Ready(Ok(buf.len()))
     }
 
