@@ -37,8 +37,13 @@ async fn echo_server() {
 
 async fn accept_echo(stream: TcpStream) {
     let addr = stream.peer_addr().expect("connected streams should have a peer address");
-    let ws_stream =
-        tokio_tungstenite::accept_async(stream).await.expect("Error during the websocket handshake occurred");
+    let ws_stream = match tokio_tungstenite::accept_async(stream).await {
+        Ok(ws) => ws,
+        Err(err) => {
+            warn!("Error during the websocket handshake occurred: {err}");
+            return;
+        }
+    };
     info!("New WebSocket echo connection: {}", addr);
 
     let (mut write, mut read) = ws_stream.split();

@@ -120,7 +120,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 [[package]]
 name = "js-sys"
 version = "0.3.91"
-source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#ecd9cabe26a1e7144e594a55f1f50f9cdbf70fc9"
+source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#5ff500e94cfd61eca6fab5a8931888da6a30e06e"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
@@ -313,7 +313,7 @@ dependencies = [
 [[package]]
 name = "wasm-bindgen"
 version = "0.2.114"
-source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#ecd9cabe26a1e7144e594a55f1f50f9cdbf70fc9"
+source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#5ff500e94cfd61eca6fab5a8931888da6a30e06e"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -325,7 +325,7 @@ dependencies = [
 [[package]]
 name = "wasm-bindgen-futures"
 version = "0.4.64"
-source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#ecd9cabe26a1e7144e594a55f1f50f9cdbf70fc9"
+source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#5ff500e94cfd61eca6fab5a8931888da6a30e06e"
 dependencies = [
  "cfg-if",
  "futures-channel",
@@ -339,7 +339,7 @@ dependencies = [
 [[package]]
 name = "wasm-bindgen-macro"
 version = "0.2.114"
-source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#ecd9cabe26a1e7144e594a55f1f50f9cdbf70fc9"
+source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#5ff500e94cfd61eca6fab5a8931888da6a30e06e"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -348,7 +348,7 @@ dependencies = [
 [[package]]
 name = "wasm-bindgen-macro-support"
 version = "0.2.114"
-source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#ecd9cabe26a1e7144e594a55f1f50f9cdbf70fc9"
+source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#5ff500e94cfd61eca6fab5a8931888da6a30e06e"
 dependencies = [
  "bumpalo",
  "proc-macro2",
@@ -360,7 +360,7 @@ dependencies = [
 [[package]]
 name = "wasm-bindgen-shared"
 version = "0.2.114"
-source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#ecd9cabe26a1e7144e594a55f1f50f9cdbf70fc9"
+source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#5ff500e94cfd61eca6fab5a8931888da6a30e06e"
 dependencies = [
  "unicode-ident",
 ]
@@ -368,7 +368,7 @@ dependencies = [
 [[package]]
 name = "wasm-bindgen-test"
 version = "0.3.64"
-source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#ecd9cabe26a1e7144e594a55f1f50f9cdbf70fc9"
+source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#5ff500e94cfd61eca6fab5a8931888da6a30e06e"
 dependencies = [
  "async-trait",
  "cast",
@@ -389,7 +389,7 @@ dependencies = [
 [[package]]
 name = "wasm-bindgen-test-macro"
 version = "0.3.64"
-source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#ecd9cabe26a1e7144e594a55f1f50f9cdbf70fc9"
+source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#5ff500e94cfd61eca6fab5a8931888da6a30e06e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -399,12 +399,12 @@ dependencies = [
 [[package]]
 name = "wasm-bindgen-test-shared"
 version = "0.2.114"
-source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#ecd9cabe26a1e7144e594a55f1f50f9cdbf70fc9"
+source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#5ff500e94cfd61eca6fab5a8931888da6a30e06e"
 
 [[package]]
 name = "web-sys"
 version = "0.3.91"
-source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#ecd9cabe26a1e7144e594a55f1f50f9cdbf70fc9"
+source = "git+https://github.com/rust-wasi-web/wasm-bindgen.git#5ff500e94cfd61eca6fab5a8931888da6a30e06e"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
