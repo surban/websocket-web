@@ -412,7 +412,7 @@ dependencies = [
 
 [[package]]
 name = "websocket-web"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "futures-core",
  "futures-sink",
